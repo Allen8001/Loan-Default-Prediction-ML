@@ -4,6 +4,10 @@ An end-to-end machine learning project for predicting loan default risk using **
 
 The project demonstrates how a credit-risk model can move beyond simple classification by combining model performance, business cost considerations, and human-readable explanations.
 
+## Dashboard Preview
+
+![Clarity in Credit Dashboard](docs/images/dashboard.png)
+
 ---
 
 ## Project Overview
