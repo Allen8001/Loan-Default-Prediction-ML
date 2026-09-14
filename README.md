@@ -1,159 +1,484 @@
-# Clarity in Credit: End-to-End Loan Default Prediction with Explainable AI
+# Explainable Credit Risk Assessment
 
-**Clarity in Credit** is an educational and research-oriented platform for **retail loan default risk scoring**. It combines a large real-world tabular dataset, gradient-boosted models, optional multi-algorithm training, SHAP-oriented tooling for local explanation workflows, and **optional** large-language-model narratives for multiple stakeholder lenses.
+An end-to-end machine learning project for predicting loan default risk using **XGBoost**, **cost-sensitive decision thresholds**, **SHAP explainability**, and an interactive **Streamlit dashboard**.
 
----
-
-## Highlights
-
-| Area | What this project offers |
-|------|---------------------------|
-| **Real portfolio-scale data** | **~255k** loan applications (`Default` as label, ~11.6% positive class) from `data/Loan_default.csv`—not a toy synthetic set. |
-| **Gradient boosting & ensembles** | **Default path:** XGBoost training via `src/train_default_model.py` (artifact: `models/loan_default_model_real.pkl`). **Upgrade path:** `src/model_upgrade_pipeline.py` with **XGBoost, LightGBM, CatBoost**, Random Forest, and stacked / voting-style workflows in `src/advanced_model_training.py`. |
-| **Explainability** | **SHAP** (optional dependency) used in `generate_shap_distribution.py` for TreeSHAP-style diagnostics on trained models; the Streamlit app surfaces **risk bands**, **feature-driven rule text**, and model metadata. |
-| **Multi-role AI narratives** | With `OPENAI_API_KEY`, `src/ai_explanations_enhanced.py` generates **customer**, **credit-underwriting**, and **compliance-style** reports using the **OpenAI API** (configure **GPT-4 family** or other models via `OPENAI_MODEL`, e.g. `gpt-4o` or `gpt-4o-mini`). **Rule-based fallbacks** run without any API key. |
+The project demonstrates how a credit-risk model can move beyond simple classification by combining model performance, business cost considerations, and human-readable explanations.
 
 ---
 
-## Architecture (data flow)
+## Project Overview
 
-```mermaid
-flowchart LR
-  subgraph ingest["Data"]
-    CSV["Loan_default.csv\n(data/)"]
-  end
+The system analyses applicant and loan information and produces:
 
-  subgraph prep["Preprocessing"]
-    RDL["src/real_data_loader.py\nencoding + scaling"]
-  end
+- A model-generated credit risk score
+- A higher-risk / lower-risk classification
+- A cost-sensitive decision threshold
+- SHAP-based feature explanations
+- A plain-language explanation of the main risk drivers
+- An interactive Streamlit interface
 
-  subgraph train["Model training"]
-    TD["src/train_default_model.py\nXGBoost bundle"]
-    UP["src/model_upgrade_pipeline.py\noptional ensemble"]
-  end
+The dataset contains **255,347 loan records** with borrower, employment, credit, and loan characteristics.
 
-  subgraph serve["Application"]
-    ST["app/app_real_data.py\nStreamlit UI"]
-  end
+> The model output is presented as a **risk score**, not a calibrated probability of default.
 
-  subgraph xai["Explainability & narratives"]
-    SHAP["SHAP scripts\n(e.g. generate_shap_distribution.py)"]
-    LLM["src/ai_explanations_enhanced.py\nOpenAI + fallbacks"]
-  end
+---
 
-  CSV --> RDL
-  RDL --> TD
-  RDL --> UP
-  TD --> ST
-  UP --> ST
-  ST --> SHAP
-  ST --> LLM
+## Key Features
+
+- **XGBoost classification model**
+- **255k+ loan records**
+- Mixed numerical and categorical feature preprocessing
+- Class imbalance handling with `scale_pos_weight`
+- Stratified Train / Validation / Test split
+- F1-based threshold optimisation
+- Cost-sensitive threshold optimisation
+- Business assumption: false negatives cost **5×** false positives
+- SHAP explainability for individual predictions
+- Human-readable risk explanations
+- Saved model artifacts with Joblib
+- Interactive Streamlit dashboard
+
+---
+
+## Model Pipeline
+
+```text
+Loan Dataset
+     │
+     ▼
+Data Loading
+     │
+     ▼
+Feature Preprocessing
+     │
+     ├── Numerical Features
+     │      └── StandardScaler
+     │
+     └── Categorical Features
+            └── OneHotEncoder
+     │
+     ▼
+XGBoost Classifier
+     │
+     ▼
+Validation-Based
+Threshold Optimisation
+     │
+     ├── F1 Threshold
+     └── Cost-Sensitive Threshold
+     │
+     ▼
+Untouched Test Evaluation
+     │
+     ▼
+Saved Model Artifact
+     │
+     ▼
+Streamlit Application
+     │
+     ├── Risk Score
+     ├── Risk Classification
+     ├── SHAP Explanation
+     └── Plain-Language Summary
 ```
 
 ---
 
-## Repository layout (logical)
+## Dataset
 
-| Path | Role |
-|------|------|
-| `app/app_real_data.py` | Main Streamlit dashboard (risk assessment, model details, about). |
-| `app/app_corrected.py` | Alternate UI variant with corrected-scaling loader where applicable. |
-| `src/` | Core logic: data loading, training, upgrade pipeline, AI explanations, `paths.py` for `data/` and `models/`. |
-| `data/Loan_default.csv` | Primary dataset (keep out of public forks if sensitive). |
-| `models/*.pkl` | Serialized model bundles (loaded by priority in the app—see note below). |
-| `run.py` / `Makefile` | One-command **install → train → app** workflows. |
-| `.env.example` | Template for `OPENAI_API_KEY` (copy to `.env`). |
+The dataset contains **255,347 records** and 18 columns.
 
-**Model load priority in the app:** `loan_default_model_neural_network.pkl` → `loan_default_model_working.pkl` → `loan_default_model_calibrated.pkl` → `loan_default_model_real.pkl`. Remove or rename higher-priority files if you want the freshly trained `*_real` bundle to load.
+The target variable is:
+
+```text
+Default
+0 = Non-default
+1 = Default
+```
+
+Class distribution:
+
+| Class | Records | Share |
+|---|---:|---:|
+| Non-default | 225,694 | 88.39% |
+| Default | 29,653 | 11.61% |
+
+Because only about **11.6%** of records represent defaults, the dataset is imbalanced. For this reason, model evaluation focuses on metrics such as **Recall, F1, ROC-AUC and PR-AUC**, rather than relying only on accuracy.
+
+### Input Features
+
+Numerical features include:
+
+- Age
+- Income
+- Loan Amount
+- Credit Score
+- Months Employed
+- Number of Credit Lines
+- Interest Rate
+- Loan Term
+- Debt-to-Income Ratio
+
+Categorical features include:
+
+- Education
+- Employment Type
+- Marital Status
+- Mortgage Status
+- Dependents
+- Loan Purpose
+- Co-Signer Status
+
+`LoanID` is excluded from model training because it is an identifier rather than a predictive feature.
 
 ---
 
-## Requirements
+## Model Evaluation
 
-- **Python 3.9+**
-- **Dataset:** `data/Loan_default.csv` (or a compatible CSV with the same schema; see `src/real_data_loader.py`).
-- **Optional:** OpenAI API key for generative explanations (see `.env.example`).
+The dataset is split into:
+
+| Dataset | Records | Purpose |
+|---|---:|---|
+| Training | 163,421 | Model training |
+| Validation | 40,856 | Threshold selection |
+| Test | 51,070 | Final untouched evaluation |
+
+The validation set is used to choose thresholds so the final test set remains independent.
+
+### XGBoost Test Performance
+
+At the default classification threshold of `0.50`:
+
+| Metric | Result |
+|---|---:|
+| Accuracy | 0.6944 |
+| Precision | 0.2288 |
+| Recall | 0.6879 |
+| F1 Score | 0.3434 |
+| ROC-AUC | 0.7585 |
+| PR-AUC | 0.3322 |
 
 ---
 
-## Quick start (recommended)
+## Threshold Optimisation
 
-### Option A — `run.py` (Windows, macOS, Linux)
+A fixed threshold of `0.50` is not necessarily the best decision rule for an imbalanced credit-risk problem.
+
+Two threshold strategies are evaluated.
+
+### F1-Optimised Threshold
+
+The best validation F1 threshold was:
+
+```text
+0.6146
+```
+
+On the untouched test set:
+
+| Metric | Default 0.50 | F1 Threshold 0.6146 |
+|---|---:|---:|
+| Accuracy | 0.6944 | 0.7982 |
+| Precision | 0.2288 | 0.2910 |
+| Recall | 0.6879 | 0.5137 |
+| F1 | 0.3434 | 0.3716 |
+
+The optimised threshold improved test F1 while producing a different precision-recall trade-off.
+
+---
+
+## Cost-Sensitive Decision Threshold
+
+For demonstration purposes, the project assumes:
+
+```text
+Cost(False Negative) = 5
+Cost(False Positive) = 1
+```
+
+This represents a scenario where failing to identify a genuine defaulter is considered more costly than incorrectly flagging a non-defaulting applicant.
+
+The validation-derived cost-sensitive threshold was:
+
+```text
+0.6105
+```
+
+Final test results:
+
+| Metric | Default Threshold | Cost-Sensitive Threshold |
+|---|---:|---:|
+| Threshold | 0.5000 | 0.6105 |
+| Accuracy | 0.6944 | 0.7955 |
+| Precision | 0.2288 | 0.2892 |
+| Recall | 0.6879 | 0.5220 |
+| F1 | 0.3434 | 0.3722 |
+| Weighted Cost | 23,009 | 21,786 |
+
+Under this illustrative cost function, weighted test cost decreased by approximately **5.3%**.
+
+> The 5× false-negative cost is a project assumption used to demonstrate cost-sensitive decision making. It should not be interpreted as a universal banking industry value.
+
+---
+
+## Explainable AI with SHAP
+
+The project uses **SHAP** to explain how individual features influence each model prediction.
+
+For a high-risk test applicant, the model identified risk drivers such as:
+
+- Income
+- Loan Amount
+- Age
+- Interest Rate
+- Months Employed
+- Employment Type
+
+Example explanation:
+
+> The main factors pushing the model toward higher predicted default risk were Income, Loan Amount, Age, Interest Rate and Months Employed.
+
+SHAP explanations describe how variables influence the **model prediction**. They do not establish causal relationships.
+
+---
+
+## Streamlit Dashboard
+
+The Streamlit application allows users to enter applicant information and receive:
+
+- Model risk score
+- Decision threshold
+- Higher-risk / lower-risk classification
+- Top SHAP risk drivers
+- Plain-language explanation
+
+Run the application with:
 
 ```bash
-# Full pipeline: install dependencies, train default XGBoost model, start Streamlit
-python run.py all
-
-# Faster smoke train (random subset) then app
-python run.py all --sample 30000 --port 8505
-
-# Individual steps
-python run.py install
-python run.py train              # full data (longer)
-python run.py train --sample 50000
-python run.py app --port 8505
+python -m streamlit run app/app.py
 ```
 
-### Option B — `Makefile` (Unix-like shells, CI)
+On Windows, you can also use:
+
+```text
+launch.bat
+```
+
+---
+
+## Project Structure
+
+```text
+Loan-Default-Prediction-ML/
+│
+├── app/
+│   ├── __init__.py
+│   └── app.py
+│
+├── data/
+│   └── Loan_default.csv
+│
+├── docs/
+│   └── images/
+│       ├── dataset_overview.png
+│       ├── credit_score_analysis.png
+│       └── correlation_heatmap.png
+│
+├── models/
+│   └── credit_risk_model.joblib
+│
+├── src/
+│   ├── __init__.py
+│   ├── data_loader.py
+│   ├── demo_explanation.py
+│   ├── explainability.py
+│   ├── model_loader.py
+│   ├── paths.py
+│   ├── preprocessing.py
+│   └── train_model.py
+│
+├── .env.example
+├── .gitignore
+├── launch.bat
+├── Makefile
+├── README.md
+└── requirements.txt
+```
+
+---
+
+## Installation
+
+### 1. Clone the repository
 
 ```bash
-make all                    # install + train + app
-TRAIN_SAMPLE=30000 make train   # faster training subset
-make app PORT=8505
+git clone https://github.com/Allen8001/Loan-Default-Prediction-ML.git
+cd Loan-Default-Prediction-ML
 ```
 
-### Windows batch (optional)
+### 2. Create a virtual environment
 
-- `run_all.bat` — wraps `python run.py all`.
-- Other launchers under project root and `scripts/` call `app\app_real_data.py` from the repo root.
+Windows PowerShell:
 
-Then open the URL shown in the terminal (default **http://localhost:8505**).
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+```
 
----
-
-## Optional: generative explanations
-
-1. Copy `.env.example` to `.env`.
-2. Set `OPENAI_API_KEY` to a valid key (`sk-…`).
-3. Optionally set `OPENAI_MODEL` (e.g. `gpt-4o`, `gpt-4o-mini`).
-
-Restart the app after changes.
-
----
-
-## Optional: advanced model upgrade
-
-Heavy pipeline (feature engineering + multiple algorithms):
+macOS / Linux:
 
 ```bash
-python -m src.model_upgrade_pipeline
+python -m venv .venv
+source .venv/bin/activate
 ```
 
-Outputs are written under `models/` per pipeline configuration (see module docstrings).
-
----
-
-## SHAP diagnostics (optional)
-
-With `shap` installed:
+### 3. Install dependencies
 
 ```bash
-python generate_shap_distribution.py
+python -m pip install -r requirements.txt
 ```
 
-Uses project path helpers and writes figures under `outputs/` when configured in those scripts.
+---
+
+## Train the Model
+
+Run:
+
+```bash
+python -m src.train_model
+```
+
+This will:
+
+1. Load the dataset
+2. Split the data into train, validation and test sets
+3. Preprocess numerical and categorical features
+4. Train the XGBoost model
+5. Optimise F1 and cost-sensitive thresholds
+6. Evaluate on the untouched test set
+7. Save the trained model artifact
+
+The resulting model is saved to:
+
+```text
+models/credit_risk_model.joblib
+```
 
 ---
 
-## Disclaimer — privacy, security, and responsible AI
+## Run the Application
 
-- **Not production lending software.** This repository is for **education, coursework, and research**. No warranty of fitness for credit decisions, compliance with any jurisdiction’s lending or consumer-protection laws, or absence of model error or bias.
-- **Data sensitivity:** The dataset is **tabular loan application data** at portfolio scale. If you replace it with real production extracts, treat them as **confidential**; do not commit PII, secrets, or regulated data to public Git remotes.
-- **Responsible use:** Automated scores and LLM text are **assistive** only. Institutions must maintain **human oversight**, **model governance** (validation, monitoring, drift, fairness testing appropriate to policy), and **transparent adverse-action** processes where legally required. Users are responsible for how they deploy, prompt, and interpret models.
-- **Third-party APIs:** Sending application narratives to cloud LLM providers may have **privacy and data-processing implications**; use enterprise agreements and data-minimization practices if you extend this pattern beyond a local demo.
+```bash
+python -m streamlit run app/app.py
+```
+
+Then open:
+
+```text
+http://localhost:8501
+```
 
 ---
 
-## License / attribution
+## Run the SHAP Demo
 
-Developed for **educational and research** purposes. Adapt and cite according to your institution’s policies and any third-party data or library licenses.
+To generate an explanation for a high-risk test applicant:
+
+```bash
+python -m src.demo_explanation
+```
+
+---
+
+## Technology Stack
+
+- Python
+- Pandas
+- NumPy
+- Scikit-learn
+- XGBoost
+- SHAP
+- Streamlit
+- Joblib
+
+---
+
+## Exploratory Data Analysis
+
+Some exploratory visualisations from the dataset are retained under `docs/images/`.
+
+### Dataset Overview
+
+![Dataset Overview](docs/images/dataset_overview.png)
+
+### Credit Score Analysis
+
+![Credit Score Analysis](docs/images/credit_score_analysis.png)
+
+### Correlation Analysis
+
+![Correlation Heatmap](docs/images/correlation_heatmap.png)
+
+These visualisations describe the dataset and should not be interpreted as evidence of causal relationships.
+
+---
+
+## Design Decisions
+
+This project intentionally separates model training from application inference.
+
+```text
+Training pipeline
+    ↓
+Saved model artifact
+    ↓
+Application loads artifact
+    ↓
+Applicant prediction
+    ↓
+SHAP explanation
+```
+
+This prevents the Streamlit application from retraining the model every time it starts.
+
+The project also separates:
+
+- Data loading
+- Preprocessing
+- Model training
+- Model loading
+- Explainability
+- User interface
+
+This makes the codebase easier to maintain, test and extend.
+
+---
+
+## Limitations
+
+This project is intended as a machine learning and software engineering portfolio project.
+
+Important limitations include:
+
+- The dataset does not represent a live production lending environment.
+- The model risk score has not been probability-calibrated.
+- The 5× false-negative cost assumption is illustrative.
+- SHAP explains model behaviour, not causal relationships.
+- Real-world credit decisions require additional governance, validation, fairness assessment, compliance and human oversight.
+
+---
+
+## Future Improvements
+
+Potential extensions include:
+
+- Probability calibration
+- Additional model comparison and hyperparameter optimisation
+- Fairness and bias evaluation
+- Automated model tests
+- CI/CD pipeline
+- Docker containerisation
+- Cloud deployment
+- Model monitoring
+- Drift detection
+- Expanded dashboard visualisations
